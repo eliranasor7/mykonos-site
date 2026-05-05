@@ -137,6 +137,8 @@ export default function App() {
   const [editPlanId, setEditPlanId] = useState(null);
   const [planForm,   setPlanForm]   = useState({ desc:"", amount:"", category:"hotel", currency:"ILS" });
   const [payForm,    setPayForm]    = useState({ memberIdx:null, amount:"", method:"ביט" });
+  const [editPaySheet, setEditPaySheet] = useState(false);
+  const [editPayId,    setEditPayId]    = useState(null);
   const [fetching,  setFetching]  = useState(false);
   const [fetchErr,  setFetchErr]  = useState(false);
 
@@ -223,17 +225,42 @@ export default function App() {
   const fetchRate = async () => {
     setFetching(true); setFetchErr(false);
     try {
-      const res = await fetch("https://api.frankfurter.app/latest?from=EUR&to=ILS");
+      // Primary: exchangerate-api (reliable, real-time)
+      const res = await fetch("https://open.er-api.com/v6/latest/EUR");
       const d   = await res.json();
-      applyRate(parseFloat(d.rates.ILS.toFixed(4)), d.date);
-      setRateSheet(false);
+      if (d.rates?.ILS) {
+        applyRate(parseFloat(d.rates.ILS.toFixed(4)), d.time_last_update_utc?.slice(0,10) || today());
+        setRateSheet(false);
+        setFetching(false);
+        return;
+      }
+      throw new Error("no ILS");
     } catch {
       try {
-        const r2 = await fetch("https://open.er-api.com/v6/latest/EUR");
+        // Fallback: frankfurter
+        const r2 = await fetch("https://api.frankfurter.app/latest?from=EUR&to=ILS");
         const d2 = await r2.json();
-        applyRate(parseFloat(d2.rates.ILS.toFixed(4)), today());
-        setRateSheet(false);
-      } catch { setFetchErr(true); }
+        if (d2.rates?.ILS) {
+          applyRate(parseFloat(d2.rates.ILS.toFixed(4)), d2.date);
+          setRateSheet(false);
+          setFetching(false);
+          return;
+        }
+        throw new Error("no ILS");
+      } catch {
+        try {
+          // Fallback 2: fixer-compatible
+          const r3 = await fetch("https://api.fxratesapi.com/latest?base=EUR&currencies=ILS");
+          const d3 = await r3.json();
+          if (d3.rates?.ILS) {
+            applyRate(parseFloat(d3.rates.ILS.toFixed(4)), today());
+            setRateSheet(false);
+            setFetching(false);
+            return;
+          }
+        } catch {}
+        setFetchErr(true);
+      }
     }
     setFetching(false);
   };
@@ -588,8 +615,23 @@ export default function App() {
                     <div style={{ fontSize:15,fontWeight:700,color:"#e2e8f0" }}>{member?.name}</div>
                     <div style={{ fontSize:12,color:"#64748b",marginTop:2 }}>{p.method} · {new Date(p.date).toLocaleDateString("he-IL",{ day:"numeric",month:"short",hour:"2-digit",minute:"2-digit" })}</div>
                   </div>
-                  <div style={{ textAlign:"left" }}>
-                    <div style={{ fontSize:22,fontWeight:800,color:"#34d399" }}>+{fmt(p.amount)}</div>
+                  <div style={{ textAlign:"left",marginLeft:8 }}>
+                    <div style={{ fontSize:22,fontWeight:800,color:"#34d399",marginBottom:6 }}>+{fmt(p.amount)}</div>
+                    <div style={{ display:"flex",gap:6,justifyContent:"flex-end" }}>
+                      <button onClick={()=>{
+                        setEditPayId(p.id);
+                        setPayForm({ memberIdx:p.memberIdx, amount:String(p.amount), method:p.method });
+                        setEditPaySheet(true);
+                      }} style={{ background:"rgba(99,102,241,0.2)",border:"none",borderRadius:8,color:"#818cf8",cursor:"pointer",padding:"4px 8px",fontSize:13 }}>✏️</button>
+                      <button onClick={()=>{
+                        // Remove payment and subtract from member total
+                        const newPayments = paymentsRef.current.filter(x=>x.id!==p.id);
+                        const newMembers  = membersRef.current.map((m,i)=>i===p.memberIdx?{...m,paid:Math.max(0,(m.paid||0)-p.amount)}:m);
+                        saveAll({ payments:newPayments, members:newMembers });
+                        setPaymentsState(newPayments);
+                        setMembersState(newMembers);
+                      }} style={{ background:"rgba(239,68,68,0.15)",border:"none",borderRadius:8,color:"#ef4444",cursor:"pointer",padding:"4px 8px",fontSize:13 }}>🗑</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -733,6 +775,51 @@ export default function App() {
         >
           ✓ אשר תשלום
         </button>
+      </BottomSheet>
+
+      {/* ══ SHEET: Edit Payment ══ */}
+      <BottomSheet open={editPaySheet} onClose={()=>setEditPaySheet(false)} title="עריכת תשלום">
+        <div style={{ fontSize:13,color:"#64748b",marginBottom:10 }}>מי שילם?</div>
+        <div style={{ marginBottom:16,maxHeight:180,overflowY:"auto" }}>
+          {members.slice(1).map((m,i)=>{
+            const idx=i+1;
+            const selected=payForm.memberIdx===idx;
+            return (
+              <div key={idx} onClick={()=>setPayForm(f=>({...f,memberIdx:idx}))} style={{ display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:12,marginBottom:6,border:`2px solid ${selected?"#10b981":"rgba(255,255,255,0.1)"}`,background:selected?"rgba(5,150,105,0.15)":"rgba(255,255,255,0.04)",cursor:"pointer" }}>
+                <div style={{ width:34,height:34,borderRadius:"50%",background:selected?"linear-gradient(135deg,#059669,#10b981)":"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0 }}>{m.name[0]}</div>
+                <div style={{ flex:1 }}><div style={{ fontSize:14,fontWeight:600,color:"#e2e8f0" }}>{m.name}</div></div>
+                {selected && <span style={{ color:"#34d399",fontSize:20 }}>✓</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize:13,color:"#64748b",marginBottom:10 }}>איך שילם?</div>
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16 }}>
+          {["ביט","פייבוקס","העברה","מזומן","פפר","אחר"].map(m=>(
+            <button key={m} onClick={()=>setPayForm(f=>({...f,method:m}))} style={{ padding:"10px 6px",borderRadius:10,border:`2px solid ${payForm.method===m?"#10b981":"rgba(255,255,255,0.1)"}`,background:payForm.method===m?"rgba(5,150,105,0.15)":"rgba(255,255,255,0.04)",color:payForm.method===m?"#34d399":"#64748b",cursor:"pointer",fontSize:13,fontWeight:600 }}>{m}</button>
+          ))}
+        </div>
+        <div style={{ fontSize:13,color:"#64748b",marginBottom:10 }}>סכום (₪)</div>
+        <NumPad value={payForm.amount} onChange={v=>setPayForm(f=>({...f,amount:v}))} currency="ILS" onCurrencyChange={()=>{}} eurRate={null} hideCurrency />
+        <button onClick={()=>{
+          const amt=parseFloat(payForm.amount);
+          if(payForm.memberIdx===null||isNaN(amt)||amt<=0) return;
+          const oldPay = paymentsRef.current.find(x=>x.id===editPayId);
+          const oldAmt = oldPay?.amount || 0;
+          const oldIdx = oldPay?.memberIdx;
+          // Build updated payments and members atomically
+          const newPayments = paymentsRef.current.map(x=>x.id===editPayId?{...x,memberIdx:payForm.memberIdx,amount:amt,method:payForm.method}:x);
+          const newMembers  = membersRef.current.map((m,i)=>{
+            let paid = m.paid || 0;
+            if (i===oldIdx)           paid = Math.max(0, paid - oldAmt); // remove old
+            if (i===payForm.memberIdx) paid = paid + amt;                 // add new
+            return { ...m, paid };
+          });
+          saveAll({ payments:newPayments, members:newMembers });
+          setPaymentsState(newPayments);
+          setMembersState(newMembers);
+          setEditPaySheet(false);
+        }} style={{ width:"100%",marginTop:16,padding:"16px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#f59e0b,#10b981)",color:"#fff",fontWeight:700,fontSize:16,cursor:"pointer" }}>שמור שינויים</button>
       </BottomSheet>
 
       {/* ══ SHEET: EUR Rate ══ */}
