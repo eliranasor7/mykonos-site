@@ -5,7 +5,7 @@ import { getDatabase, ref, set, onValue } from "firebase/database";
 const firebaseConfig = {
   apiKey: "AIzaSyAEOgpz2jEaUE1CajK1FbqSMVSb5lUHdyU",
   authDomain: "mykonos2025-2d44a.firebaseapp.com",
-  databaseURL: "https://mykonos2025-2d44a-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL: "https://mykonos2025-2d44a-default-rtdb.firebaseio.com",
   projectId: "mykonos2025-2d44a",
   storageBucket: "mykonos2025-2d44a.firebasestorage.app",
   messagingSenderId: "467122454609",
