@@ -1,4 +1,20 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, set, onValue } from "firebase/database";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAEOgpz2jEaUE1CajK1FbqSMVSb5lUHdyU",
+  authDomain: "mykonos2025-2d44a.firebaseapp.com",
+  databaseURL: "https://mykonos2025-2d44a-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "mykonos2025-2d44a",
+  storageBucket: "mykonos2025-2d44a.firebasestorage.app",
+  messagingSenderId: "467122454609",
+  appId: "1:467122454609:web:8a782bd3b81506f37d3870"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+const DB_PATH = "mykonos2025";
 
 const CATEGORIES = [
   { id: "hotel",      label: "מלון",             emoji: "🏨" },
@@ -10,7 +26,7 @@ const CATEGORIES = [
 ];
 
 const CC_FEE = 0.03;
-const STORAGE_KEY = "mykonos-v6";
+// Firebase replaces localStorage
 const today = () => new Date().toISOString().slice(0, 10);
 
 const DEFAULT_MEMBERS = [
@@ -147,8 +163,7 @@ export default function App() {
   const eurRateRef  = useRef(3.45);
   const eurDateRef  = useRef(null);
 
-  // ── STORAGE ──
-  // saveAll: updates refs then writes everything to localStorage in one shot
+  // ── STORAGE: Firebase Realtime DB ──
   const saveAll = (patch = {}) => {
     if (patch.members  !== undefined) membersRef.current  = patch.members;
     if (patch.expenses !== undefined) expensesRef.current = patch.expenses;
@@ -157,33 +172,37 @@ export default function App() {
     if (patch.planned  !== undefined) plannedRef.current  = patch.planned;
     if (patch.payments !== undefined) paymentsRef.current = patch.payments;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      set(ref(db, DB_PATH), {
         members:  membersRef.current,
         expenses: expensesRef.current,
         eurRate:  eurRateRef.current,
         eurDate:  eurDateRef.current,
         planned:  plannedRef.current,
         payments: paymentsRef.current,
-      }));
-    } catch(e) { console.error("save failed", e); }
+      });
+    } catch(e) { console.error("Firebase save failed", e); }
   };
 
   useEffect(() => {
-    (() => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const d = JSON.parse(raw);
-          if (d.members)  { membersRef.current  = d.members;  setMembersState(d.members);  }
-          if (d.expenses) { expensesRef.current = d.expenses; setExpensesState(d.expenses); }
-          if (d.eurRate)  { eurRateRef.current  = d.eurRate;  setEurRateState(d.eurRate);   }
-          if (d.eurDate)  { eurDateRef.current  = d.eurDate;  setEurDateState(d.eurDate);   }
-          if (d.planned)  { plannedRef.current  = d.planned;  setPlannedState(d.planned);   }
-          if (d.payments) { paymentsRef.current = d.payments; setPaymentsState(d.payments); }
-        }
-      } catch(e) {}
+    // Load from Firebase — onValue fires once immediately with current data
+    const dbRef = ref(db, DB_PATH);
+    const unsubscribe = onValue(dbRef, (snapshot) => {
+      const d = snapshot.val();
+      if (d) {
+        if (d.members)  { membersRef.current  = d.members;  setMembersState(d.members);  }
+        if (d.expenses) { expensesRef.current = d.expenses; setExpensesState(d.expenses); }
+        if (d.eurRate)  { eurRateRef.current  = d.eurRate;  setEurRateState(d.eurRate);   }
+        if (d.eurDate)  { eurDateRef.current  = d.eurDate;  setEurDateState(d.eurDate);   }
+        if (d.planned)  { plannedRef.current  = d.planned;  setPlannedState(d.planned);   }
+        if (d.payments) { paymentsRef.current = d.payments; setPaymentsState(d.payments); }
+      }
       setLoaded(true);
-    })();
+      // After first load, unsubscribe (we don't want real-time sync overwriting local edits)
+      unsubscribe();
+    }, (error) => {
+      console.error("Firebase load error", error);
+      setLoaded(true);
+    });
   }, []);
 
   const setMembers = (upd) => {
