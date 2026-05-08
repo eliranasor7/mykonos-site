@@ -582,18 +582,40 @@ export default function App() {
           {planned.map(p=>{
             const cat=CATEGORIES.find(c=>c.id===p.category);
             return (
-              <div key={p.id} style={{ background:"rgba(255,255,255,0.05)",borderRadius:14,padding:"13px 14px",marginBottom:8,border:"1px solid rgba(99,102,241,0.2)",display:"flex",alignItems:"center",gap:12 }}>
-                <div style={{ fontSize:22 }}>{cat?.emoji}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14,fontWeight:600,color:"#e2e8f0" }}>{p.desc}</div>
-                  <div style={{ fontSize:12,color:"#64748b" }}>{cat?.label}</div>
-                  <div style={{ fontSize:20,fontWeight:800,color:"#a78bfa",lineHeight:1.3,marginTop:4 }}>{fmt(p.amount)}</div>
-                  <div style={{ fontSize:10,color:"#475569" }}>{fmt(Math.round(p.amount/numMembers))}/אדם</div>
+              <div key={p.id} style={{ background:"rgba(255,255,255,0.05)",borderRadius:14,padding:"13px 14px",marginBottom:8,border:"1px solid rgba(99,102,241,0.2)" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                  <div style={{ fontSize:22 }}>{cat?.emoji}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14,fontWeight:600,color:"#e2e8f0" }}>{p.desc}</div>
+                    <div style={{ fontSize:12,color:"#64748b" }}>{cat?.label}</div>
+                    <div style={{ fontSize:20,fontWeight:800,color:"#a78bfa",lineHeight:1.3,marginTop:4 }}>{fmt(p.amount)}</div>
+                    <div style={{ fontSize:10,color:"#475569" }}>{fmt(Math.round(p.amount/numMembers))}/אדם</div>
+                  </div>
+                  <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+                    <button onClick={()=>{ setEditPlanId(p.id); setPlanForm({ desc:p.desc, amount:String(p.originalAmount), category:p.category, currency:p.currency }); setEditPlanSheet(true); }} style={{ background:"rgba(99,102,241,0.2)",border:"none",borderRadius:8,color:"#818cf8",cursor:"pointer",padding:"6px 10px",fontSize:14 }}>✏️</button>
+                    <button onClick={()=>setPlanned(prev=>prev.filter(x=>x.id!==p.id))} style={{ background:"rgba(239,68,68,0.15)",border:"none",borderRadius:8,color:"#ef4444",cursor:"pointer",padding:"6px 10px",fontSize:14 }}>🗑</button>
+                  </div>
                 </div>
-                <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
-                  <button onClick={()=>{ setEditPlanId(p.id); setPlanForm({ desc:p.desc, amount:String(p.originalAmount), category:p.category, currency:p.currency }); setEditPlanSheet(true); }} style={{ background:"rgba(99,102,241,0.2)",border:"none",borderRadius:8,color:"#818cf8",cursor:"pointer",padding:"6px 10px",fontSize:14 }}>✏️</button>
-                  <button onClick={()=>setPlanned(prev=>prev.filter(x=>x.id!==p.id))} style={{ background:"rgba(239,68,68,0.15)",border:"none",borderRadius:8,color:"#ef4444",cursor:"pointer",padding:"6px 10px",fontSize:14 }}>🗑</button>
-                </div>
+                {/* Convert to expense button */}
+                <button onClick={()=>{
+                  // Add to expenses
+                  const newExpense = { id:Date.now(), desc:p.desc, amount:p.amount, category:p.category, currency:p.currency||"ILS", originalAmount:p.originalAmount||p.amount };
+                  const newExpenses = [...expensesRef.current, newExpense];
+                  // Remove from planned
+                  const newPlanned = plannedRef.current.filter(x=>x.id!==p.id);
+                  saveAll({ expenses:newExpenses, planned:newPlanned });
+                  setExpensesState(newExpenses);
+                  setPlannedState(newPlanned);
+                }} style={{
+                  width:"100%", marginTop:10, padding:"10px",
+                  borderRadius:10, border:"none",
+                  background:"linear-gradient(135deg,rgba(5,150,105,0.25),rgba(16,185,129,0.25))",
+                  color:"#34d399", fontWeight:700, fontSize:13,
+                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                  border:"1px solid rgba(52,211,153,0.3)"
+                }}>
+                  ✓ שולם — העבר להוצאות
+                </button>
               </div>
             );
           })}
